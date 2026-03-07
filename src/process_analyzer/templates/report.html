@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }} — Process Analysis Report</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --card: #ffffff;
+    --primary: #2563eb;
+    --primary-light: #dbeafe;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --success: #16a34a;
+    --warning: #d97706;
+    --accent: #7c3aed;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+  header {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: #fff; padding: 2.5rem 0; text-align: center;
+  }
+  header h1 { font-size: 1.8rem; font-weight: 700; }
+  header p { opacity: 0.85; margin-top: 0.5rem; }
+  nav {
+    position: sticky; top: 0; background: var(--card); border-bottom: 1px solid var(--border);
+    z-index: 100; padding: 0.75rem 0;
+  }
+  nav .container { display: flex; gap: 1rem; flex-wrap: wrap; padding-top: 0; padding-bottom: 0; }
+  nav a {
+    text-decoration: none; color: var(--primary); font-weight: 500; font-size: 0.9rem;
+    padding: 0.25rem 0.75rem; border-radius: 4px; transition: background 0.2s;
+  }
+  nav a:hover { background: var(--primary-light); }
+  section { margin: 2rem 0; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  h2 { font-size: 1.4rem; margin-bottom: 1rem; color: var(--primary); }
+  h3 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+  ul, ol { margin-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: 0.3rem; }
+  .mermaid-wrapper { overflow-x: auto; margin: 1rem 0; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem;
+  }
+  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg); font-weight: 600; white-space: nowrap; }
+  .badge {
+    display: inline-block; padding: 0.15rem 0.5rem; border-radius: 9999px;
+    font-size: 0.75rem; font-weight: 600;
+  }
+  .badge-quick { background: #dcfce7; color: #166534; }
+  .badge-short { background: #fef9c3; color: #854d0e; }
+  .badge-strategic { background: #ede9fe; color: #5b21b6; }
+  .badge-det { background: #dbeafe; color: #1e40af; }
+  .badge-int { background: #fce7f3; color: #9d174d; }
+  .badge-hyb { background: #f0fdf4; color: #166534; }
+  .badge-selected { background: var(--success); color: #fff; }
+  .badge-unselected { background: var(--border); color: var(--text-muted); }
+  .role-card {
+    background: linear-gradient(135deg, #ede9fe, #dbeafe); border: none;
+    padding: 2rem;
+  }
+  .role-level { font-size: 2rem; font-weight: 800; color: var(--accent); }
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; }
+  .kpi-item { background: var(--bg); padding: 0.75rem; border-radius: 8px; font-size: 0.9rem; }
+  footer { text-align: center; color: var(--text-muted); padding: 2rem 0; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <h1>{{ title }}</h1>
+    <p>Process Analysis Report</p>
+  </div>
+</header>
+
+<nav>
+  <div class="container">
+    {% if transcript %}<a href="#input">Input</a>{% endif %}
+    <a href="#asis">AS-IS</a>
+    <a href="#automation">Automation Points</a>
+    <a href="#tobe">TO-BE</a>
+    <a href="#role">New Human Role</a>
+  </div>
+</nav>
+
+<div class="container">
+
+{% if transcript %}
+<section id="input">
+  <h2>Input Summary</h2>
+  <div class="card">
+    <h3>Transcript / Source Text</h3>
+    <p style="white-space: pre-wrap; font-size: 0.9rem; color: var(--text-muted); max-height: 300px; overflow-y: auto;">{{ transcript }}</p>
+  </div>
+</section>
+{% endif %}
+
+<section id="asis">
+  <h2>AS-IS Process</h2>
+  <div class="card">
+    <h3>Summary</h3>
+    <p>{{ asis.summary }}</p>
+  </div>
+
+  {% if asis.mermaid_code %}
+  <div class="card">
+    <h3>Process Diagram</h3>
+    <div class="mermaid-wrapper">
+      <pre class="mermaid">{{ asis.mermaid_code }}</pre>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h3>Roles</h3>
+    <ul>
+    {% for role in asis.roles %}
+      <li><strong>{{ role.name }}</strong> — {{ role.description }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Process Steps</h3>
+    <table>
+      <thead><tr><th>#</th><th>Step</th><th>Actor</th><th>Description</th><th>Pain Points</th></tr></thead>
+      <tbody>
+      {% for step in asis.steps %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ step.name }}</td>
+        <td>{{ step.actor }}</td>
+        <td>{{ step.description }}</td>
+        <td>{% for p in step.pain_points %}{{ p }}{% if not loop.last %}; {% endif %}{% endfor %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if asis.issues %}
+  <div class="card">
+    <h3>Issues &amp; Bottlenecks</h3>
+    <ul>{% for issue in asis.issues %}<li>{{ issue }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+</section>
+
+<section id="automation">
+  <h2>Automation Opportunities</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Stage</th><th>Manual Action</th><th>Automation Potential</th><th>Type</th><th>Effect</th><th>Maturity</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+      {% for ap in automation_points %}
+      <tr>
+        <td>{{ ap.stage }}</td>
+        <td>{{ ap.manual_action }}</td>
+        <td>{{ ap.potential }}</td>
+        <td><span class="badge badge-{{ 'det' if ap.automation_type.value == 'deterministic' else ('int' if ap.automation_type.value == 'intelligent' else 'hyb') }}">{{ ap.automation_type.value }}</span></td>
+        <td>{{ ap.effect }}</td>
+        <td><span class="badge badge-{{ 'quick' if ap.maturity.value == 'quick_win' else ('short' if ap.maturity.value == 'short_term' else 'strategic') }}">{{ ap.maturity.value }}</span></td>
+        <td><span class="badge {{ 'badge-selected' if ap.id in selected_ids else 'badge-unselected' }}">{{ 'Selected' if ap.id in selected_ids else 'Skipped' }}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="tobe">
+  <h2>TO-BE Process</h2>
+  <div class="card">
+    <h3>Summary</h3>
+    <p>{{ tobe.summary }}</p>
+  </div>
+
+  {% if tobe.mermaid_code %}
+  <div class="card">
+    <h3>Process Diagram</h3>
+    <div class="mermaid-wrapper">
+      <pre class="mermaid">{{ tobe.mermaid_code }}</pre>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h3>Process Steps</h3>
+    <table>
+      <thead><tr><th>#</th><th>Step</th><th>Actor</th><th>Description</th></tr></thead>
+      <tbody>
+      {% for step in tobe.steps %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ step.name }}</td>
+        <td>{{ step.actor }}</td>
+        <td>{{ step.description }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if tobe.changes_rationale %}
+  <div class="card">
+    <h3>Changes Rationale</h3>
+    <ul>{% for r in tobe.changes_rationale %}<li>{{ r }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if tobe.assumptions %}
+  <div class="card">
+    <h3>Assumptions</h3>
+    <ul>{% for a in tobe.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+</section>
+
+<section id="role">
+  <h2>New Human Role</h2>
+  <div class="card role-card">
+    <div style="display:flex; align-items:center; gap:1.5rem; margin-bottom:1.5rem;">
+      <div class="role-level">{{ human_role.level.value }}</div>
+      <div>
+        <h3 style="margin-bottom:0.25rem;">{{ human_role.role_name }}</h3>
+        <p style="color:var(--text-muted);">{{ human_role.mission }}</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Responsibilities</h3>
+    <ul>{% for r in human_role.responsibilities %}<li>{{ r }}</li>{% endfor %}</ul>
+  </div>
+
+  {% if human_role.boundaries %}
+  <div class="card">
+    <h3>Boundaries (Handled by Automation)</h3>
+    <p>{{ human_role.boundaries }}</p>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h3>KPIs</h3>
+    <div class="kpi-grid">
+      {% for kpi in human_role.kpis %}<div class="kpi-item">{{ kpi }}</div>{% endfor %}
+    </div>
+  </div>
+
+  {% if human_role.tools %}
+  <div class="card">
+    <h3>Tools &amp; Systems</h3>
+    <ul>{% for t in human_role.tools %}<li>{{ t }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+</section>
+
+</div>
+
+<footer>
+  <p>Generated by Process Automation Designer</p>
+</footer>
+
+<script>mermaid.initialize({startOnLoad: true, theme: 'default'});</script>
+</body>
+</html>
