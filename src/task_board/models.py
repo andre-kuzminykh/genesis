@@ -15,12 +15,29 @@ class TaskStatus(str, Enum):
     DONE = "Done"
 
 
+class TaskType(str, Enum):
+    INTELLIGENT = "Intelligent"  # LLM-based execution
+    MCP = "MCP"  # MCP tool call — fill in fields
+    CODE = "Code"  # Python code execution
+
+
+@dataclass
+class MCPConfig:
+    """Configuration for MCP tool call tasks."""
+    server: str = ""
+    tool_name: str = ""
+    parameters: dict[str, str] = field(default_factory=dict)
+
+
 @dataclass
 class Task:
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     title: str = ""
-    description: str = ""  # prompt for LLM execution
+    description: str = ""  # prompt for LLM / code content / MCP description
     status: TaskStatus = TaskStatus.TODO
+    task_type: TaskType = TaskType.INTELLIGENT
+    code: str = ""  # Python code for CODE type
+    mcp_config: MCPConfig = field(default_factory=MCPConfig)  # MCP type config
     parent_id: Optional[str] = None
     dependency_ids: list[str] = field(default_factory=list)
     input_artifacts: list[str] = field(default_factory=list)  # artifact keys
