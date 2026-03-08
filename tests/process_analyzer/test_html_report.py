@@ -333,14 +333,14 @@ class TestHTMLReportBuilder:
 
         assert sample_human_role.level.value in html
 
-    def test_navigation_links(
+    def test_navigation_toggle(
         self,
         sample_asis: ASISModel,
         sample_automation_points: list[AutomationPoint],
         sample_tobe: TOBEModel,
         sample_human_role: HumanRoleProfile,
     ):
-        """NFR-11: Navigable sections."""
+        """NFR-11: Navigable via AS-IS / TO-BE toggle and section IDs."""
         html = build_html_report(
             title="Test",
             transcript="text",
@@ -351,7 +351,12 @@ class TestHTMLReportBuilder:
             human_role=sample_human_role,
         )
 
-        assert 'href="#asis"' in html
-        assert 'href="#automation"' in html
-        assert 'href="#tobe"' in html
-        assert 'href="#role"' in html
+        # Toggle buttons
+        assert "switchMode" in html
+        assert 'id="btn-asis"' in html
+        assert 'id="btn-tobe"' in html
+        # Section IDs still present
+        assert 'id="asis"' in html
+        assert 'id="automation"' in html
+        assert 'id="tobe"' in html
+        assert 'id="role"' in html

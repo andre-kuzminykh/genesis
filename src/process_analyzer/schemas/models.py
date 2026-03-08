@@ -64,6 +64,10 @@ class AutomationPoint(BaseModel):
     effect: str
     maturity: AutomationMaturity
     default_selected: bool = True
+    human_role_description: str = ""
+    system_action: str = ""
+    human_action: str = ""
+    interaction_description: str = ""
 
 
 class TOBEModel(BaseModel):

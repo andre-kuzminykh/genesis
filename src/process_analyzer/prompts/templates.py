@@ -88,7 +88,11 @@ For each automation opportunity, return a JSON array:
     "automation_type": "deterministic|intelligent|hybrid",
     "effect": "Expected benefit: time saved, errors reduced, etc.",
     "maturity": "quick_win|short_term|strategic",
-    "default_selected": true
+    "default_selected": true,
+    "human_role_description": "Current role of the human in this operation",
+    "system_action": "What the automated system will do at this step",
+    "human_action": "What the human will do at this step after automation",
+    "interaction_description": "How the human and system interact at this step"
   }}
 ]
 
