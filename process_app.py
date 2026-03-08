@@ -270,10 +270,8 @@ with st.container():
         with st.expander("Transcript"):
             st.text(state["transcript"][:2000])
 
-st.divider()
-
 # ---------------------------------------------------------------------------
-# STEP 2 — AS-IS Results
+# STEP 2 — AS-IS Results (appears only after step 1 completes)
 # ---------------------------------------------------------------------------
 
 step2_done = state["state"].value in (
@@ -283,15 +281,13 @@ step2_done = state["state"].value in (
     SessionState.HTML_READY.value,
 )
 
-with st.container():
-    _video_placeholder()
-    _step_header(2, "AS-IS Analysis", "How your process works today")
+if step2_done:
+    st.divider()
+    with st.container():
+        _video_placeholder()
+        _step_header(2, "AS-IS Analysis", "Review how your process works today")
 
-    if not step2_done:
-        st.info("Complete step 1 to see the analysis.")
-    else:
         asis = state["asis"]
-
         st.markdown(f"**Summary:** {asis.summary}")
 
         with st.expander("Process diagram"):
@@ -320,10 +316,8 @@ with st.container():
                 for issue in asis.issues:
                     st.error(issue)
 
-st.divider()
-
 # ---------------------------------------------------------------------------
-# STEP 3 — Automation Points
+# STEP 3 — Automation Points (appears only after step 2 completes)
 # ---------------------------------------------------------------------------
 
 step3_done = state["state"].value in (
@@ -332,13 +326,12 @@ step3_done = state["state"].value in (
     SessionState.HTML_READY.value,
 )
 
-with st.container():
-    _video_placeholder()
-    _step_header(3, "Automation Opportunities", "Choose what to automate")
+if step3_done:
+    st.divider()
+    with st.container():
+        _video_placeholder()
+        _step_header(3, "Automation Opportunities", "Select which steps to automate")
 
-    if not step3_done:
-        st.info("Complete previous steps first.")
-    else:
         points: list[AutomationPoint] = state["automation_points"]
         selected_ids = set(state["selected_point_ids"])
 
@@ -410,10 +403,8 @@ with st.container():
             if state["state"] == SessionState.TOBE_GENERATED:
                 st.rerun()
 
-st.divider()
-
 # ---------------------------------------------------------------------------
-# STEP 4 — TO-BE & Human Role
+# STEP 4 — TO-BE & Human Role (appears only after step 3 completes)
 # ---------------------------------------------------------------------------
 
 step4_done = state["state"].value in (
@@ -421,15 +412,13 @@ step4_done = state["state"].value in (
     SessionState.HTML_READY.value,
 )
 
-with st.container():
-    _video_placeholder()
-    _step_header(4, "TO-BE Process", "How the process will work after automation")
+if step4_done:
+    st.divider()
+    with st.container():
+        _video_placeholder()
+        _step_header(4, "TO-BE Process", "Review how the process will work after automation")
 
-    if not step4_done:
-        st.info("Complete previous steps first.")
-    else:
         tobe = state["tobe"]
-
         st.markdown(f"**Summary:** {tobe.summary}")
 
         with st.expander("Process diagram"):
@@ -456,7 +445,7 @@ with st.container():
         if human_role:
             st.markdown("---")
             st.markdown(
-                f"<div style='text-align:center'><h4>New Human Role</h4></div>",
+                "<div style='text-align:center'><h4>New Human Role</h4></div>",
                 unsafe_allow_html=True,
             )
 
@@ -493,51 +482,49 @@ with st.container():
                     for t in human_role.tools:
                         st.markdown(f"- {t}")
 
-st.divider()
-
 # ---------------------------------------------------------------------------
-# STEP 5 — Final Report
+# STEP 5 — Final Report (appears only after step 4 completes)
 # ---------------------------------------------------------------------------
 
-with st.container():
-    _video_placeholder()
-    _step_header(5, "Final Report", "Download the complete analysis")
+if step4_done:
+    st.divider()
+    with st.container():
+        _video_placeholder()
+        _step_header(5, "Final Report", "Download the complete analysis as HTML")
 
-    if not step4_done:
-        st.info("Complete previous steps first.")
-    elif state["state"] != SessionState.HTML_READY:
-        if st.button("Generate Report", type="primary", use_container_width=True):
-            try:
-                title = state.get("process_title") or "Process"
-                transcript = state.get("transcript") or state.get("normalized_text")
-                html = build_html_report(
-                    title=title,
-                    transcript=transcript,
-                    asis=state["asis"],
-                    automation_points=state["automation_points"],
-                    selected_ids=state["selected_point_ids"],
-                    tobe=state["tobe"],
-                    human_role=state["human_role"],
-                )
-                state["html_report"] = html
-                state["state"] = SessionState.HTML_READY
-                st.rerun()
-            except Exception as e:
-                st.error(str(e))
-    else:
-        html = state["html_report"]
+        if state["state"] != SessionState.HTML_READY:
+            if st.button("Generate Report", type="primary", use_container_width=True):
+                try:
+                    title = state.get("process_title") or "Process"
+                    transcript = state.get("transcript") or state.get("normalized_text")
+                    html = build_html_report(
+                        title=title,
+                        transcript=transcript,
+                        asis=state["asis"],
+                        automation_points=state["automation_points"],
+                        selected_ids=state["selected_point_ids"],
+                        tobe=state["tobe"],
+                        human_role=state["human_role"],
+                    )
+                    state["html_report"] = html
+                    state["state"] = SessionState.HTML_READY
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+        else:
+            html = state["html_report"]
 
-        with st.expander("Preview report"):
-            st.components.v1.html(html, height=600, scrolling=True)
+            with st.expander("Preview report"):
+                st.components.v1.html(html, height=600, scrolling=True)
 
-        title = state.get("process_title") or "Process"
-        safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
+            title = state.get("process_title") or "Process"
+            safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
 
-        st.download_button(
-            label="Download HTML Report",
-            data=html,
-            file_name=f"{safe}_report.html",
-            mime="text/html",
-            type="primary",
-            use_container_width=True,
-        )
+            st.download_button(
+                label="Download HTML Report",
+                data=html,
+                file_name=f"{safe}_report.html",
+                mime="text/html",
+                type="primary",
+                use_container_width=True,
+            )
