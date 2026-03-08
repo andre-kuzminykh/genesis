@@ -126,6 +126,49 @@ def _avatar_circle(icon: str = "🎙", label: str = ""):
     )
 
 
+def _loading_with_avatar(icon: str, message: str):
+    """Render the avatar circle with a spinning ring around it and status text below."""
+    st.markdown(
+        f"""
+        <div style="text-align:center; padding:40px 20px;">
+            <div style="
+                width:120px; height:120px;
+                border-radius:50%;
+                margin: 0 auto 20px auto;
+                position: relative;
+                display:flex; align-items:center; justify-content:center;
+            ">
+                <!-- Spinning ring -->
+                <div style="
+                    position:absolute; inset:0;
+                    border-radius:50%;
+                    border: 4px solid rgba(102,126,234,0.15);
+                    border-top-color: #667eea;
+                    border-right-color: #764ba2;
+                    animation: spin 1.2s linear infinite;
+                "></div>
+                <!-- Inner circle -->
+                <div style="
+                    width:100px; height:100px;
+                    border-radius:50%;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    display:flex; align-items:center; justify-content:center;
+                    color: white; font-size: 40px;
+                    box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+                ">{icon}</div>
+            </div>
+            <p style="font-size:1.05rem; color:#555; margin:0; font-weight:500;">{message}</p>
+        </div>
+        <style>
+        @keyframes spin {{
+            to {{ transform: rotate(360deg); }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _screen_header(title: str, subtitle: str):
     """Render screen title centered."""
     st.markdown(
@@ -145,37 +188,6 @@ def _back_button():
         st.session_state["screen"] -= 1
         st.rerun()
 
-
-def _loading_screen(messages: list[tuple[str, float]]):
-    """Show a loading screen with sequential status messages.
-
-    Each item is (message, duration_seconds).
-    """
-    placeholder = st.empty()
-    for msg, duration in messages:
-        placeholder.markdown(
-            f"""
-            <div style="text-align:center; padding:60px 20px;">
-                <div style="
-                    width:80px; height:80px;
-                    border-radius:50%;
-                    border: 4px solid #f0f0f0;
-                    border-top-color: #667eea;
-                    margin: 0 auto 24px auto;
-                    animation: spin 1s linear infinite;
-                "></div>
-                <p style="font-size:1.1rem; color:#333; margin:0;">{msg}</p>
-            </div>
-            <style>
-            @keyframes spin {{
-                to {{ transform: rotate(360deg); }}
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-        time.sleep(duration)
-    placeholder.empty()
 
 
 def _build_agents_from_points(points: list[AutomationPoint]) -> list[dict]:
@@ -319,27 +331,8 @@ if ss["screen"] == 1:
                 progress_placeholder = st.empty()
 
                 def _show_progress(msg: str):
-                    progress_placeholder.markdown(
-                        f"""
-                        <div style="text-align:center; padding:40px 20px;">
-                            <div style="
-                                width:80px; height:80px;
-                                border-radius:50%;
-                                border: 4px solid #f0f0f0;
-                                border-top-color: #667eea;
-                                margin: 0 auto 24px auto;
-                                animation: spin 1s linear infinite;
-                            "></div>
-                            <p style="font-size:1.1rem; color:#555; margin:0; font-weight:500;">{msg}</p>
-                        </div>
-                        <style>
-                        @keyframes spin {{
-                            to {{ transform: rotate(360deg); }}
-                        }}
-                        </style>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                    with progress_placeholder.container():
+                        _loading_with_avatar("🎙", msg)
 
                 try:
                     # Transcribe if audio
@@ -436,6 +429,45 @@ elif ss["screen"] == 2:
     ss["selected_point_ids"] = list(selected_ids)
     st.caption(f"{len(selected_ids)} of {len(points)} selected")
 
+    # --- Next button (BEFORE AS-IS) ---
+    st.markdown("")
+    can_next = len(selected_ids) > 0
+    if st.button(
+        "Next: Design TO-BE →",
+        type="primary",
+        use_container_width=True,
+        disabled=not can_next,
+    ):
+        sel_points = [p for p in points if p.id in selected_ids]
+        title = ss.get("process_title") or "Process"
+
+        loading_container = st.empty()
+        with loading_container.container():
+            progress_ph = st.empty()
+
+            def _show(msg):
+                with progress_ph.container():
+                    _loading_with_avatar("🔍", msg)
+
+            try:
+                _show("Building TO-BE process...")
+                tobe = run_async(generate_tobe(title, asis, sel_points))
+                ss["tobe"] = tobe
+                ss["state"] = SessionState.TOBE_GENERATED
+
+                _show("Designing new human role...")
+                human_role = run_async(generate_human_role(title, asis, tobe, sel_points))
+                ss["human_role"] = human_role
+
+                _show("Preparing results...")
+                time.sleep(0.5)
+
+                ss["screen"] = 3
+                st.rerun()
+            except Exception as e:
+                loading_container.empty()
+                st.error(str(e))
+
     # --- AS-IS Section ---
     st.markdown("---")
     st.markdown(
@@ -491,58 +523,6 @@ elif ss["screen"] == 2:
             st.markdown("**Artifacts:**")
             for a in asis.artifacts:
                 st.markdown(f"- {a}")
-
-    # --- Next button ---
-    st.markdown("")
-    can_next = len(selected_ids) > 0
-    if st.button(
-        "Next: Design TO-BE →",
-        type="primary",
-        use_container_width=True,
-        disabled=not can_next,
-    ):
-        sel_points = [p for p in points if p.id in selected_ids]
-        title = ss.get("process_title") or "Process"
-
-        loading_container = st.empty()
-        with loading_container.container():
-            progress_ph = st.empty()
-
-            def _show(msg):
-                progress_ph.markdown(
-                    f"""
-                    <div style="text-align:center; padding:40px 20px;">
-                        <div style="
-                            width:80px; height:80px; border-radius:50%;
-                            border: 4px solid #f0f0f0; border-top-color: #667eea;
-                            margin: 0 auto 24px auto;
-                            animation: spin 1s linear infinite;
-                        "></div>
-                        <p style="font-size:1.1rem; color:#555; margin:0; font-weight:500;">{msg}</p>
-                    </div>
-                    <style>@keyframes spin {{ to {{ transform: rotate(360deg); }} }}</style>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-            try:
-                _show("Building TO-BE process...")
-                tobe = run_async(generate_tobe(title, asis, sel_points))
-                ss["tobe"] = tobe
-                ss["state"] = SessionState.TOBE_GENERATED
-
-                _show("Designing new human role...")
-                human_role = run_async(generate_human_role(title, asis, tobe, sel_points))
-                ss["human_role"] = human_role
-
-                _show("Preparing results...")
-                time.sleep(0.5)
-
-                ss["screen"] = 3
-                st.rerun()
-            except Exception as e:
-                loading_container.empty()
-                st.error(str(e))
 
 # ---------------------------------------------------------------------------
 # SCREEN 3 — Human Role + TO-BE
@@ -610,6 +590,18 @@ elif ss["screen"] == 3:
                 for t in human_role.tools:
                     st.markdown(f"- {t}")
 
+    # --- Next button (BEFORE TO-BE) ---
+    st.markdown("")
+    if st.button("Next: View Agents →", type="primary", use_container_width=True):
+        # Build agent list from selected points
+        sel_points = [p for p in points if p.id in selected_ids]
+        ss["agents"] = _build_agents_from_points(sel_points)
+        ss["selected_agents"] = [
+            a["id"] for a in ss["agents"] if a["status"] == "ready"
+        ]
+        ss["screen"] = 4
+        st.rerun()
+
     # --- TO-BE Section ---
     st.markdown("---")
     st.markdown(
@@ -639,7 +631,6 @@ elif ss["screen"] == 3:
             st.caption(step.description)
 
     with tab_metrics:
-        # Show changes rationale as metrics improvement
         if tobe.changes_rationale:
             for r in tobe.changes_rationale:
                 st.info(r)
@@ -649,7 +640,6 @@ elif ss["screen"] == 3:
                 st.markdown(f"- {a}")
 
     with tab_roles:
-        # Show actors from TO-BE steps
         actors_seen = set()
         for step in tobe.steps:
             if step.actor not in actors_seen:
@@ -671,18 +661,6 @@ elif ss["screen"] == 3:
                 st.markdown(f"- {s}")
         else:
             st.info("No systems specified")
-
-    # --- Next button ---
-    st.markdown("")
-    if st.button("Next: View Agents →", type="primary", use_container_width=True):
-        # Build agent list from selected points
-        sel_points = [p for p in points if p.id in selected_ids]
-        ss["agents"] = _build_agents_from_points(sel_points)
-        ss["selected_agents"] = [
-            a["id"] for a in ss["agents"] if a["status"] == "ready"
-        ]
-        ss["screen"] = 4
-        st.rerun()
 
 # ---------------------------------------------------------------------------
 # SCREEN 4 — Agents (implement / develop)
