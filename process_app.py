@@ -1,12 +1,12 @@
 """Process Automation Designer — Streamlit Application.
 
+Minimalist step-by-step vertical layout, mobile-friendly.
 Run with: streamlit run process_app.py
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import tempfile
 from pathlib import Path
 
@@ -39,16 +39,7 @@ def run_async(coro):
 
 
 def _init_session():
-    if "processes" not in st.session_state:
-        st.session_state["processes"] = {}  # title -> process data dict
-    if "active_process" not in st.session_state:
-        st.session_state["active_process"] = None
-    if "creating_new" not in st.session_state:
-        st.session_state["creating_new"] = False
-
-
-def _new_process_data() -> dict:
-    return {
+    defaults = {
         "state": SessionState.INPUT,
         "process_title": "",
         "raw_text": "",
@@ -61,22 +52,15 @@ def _new_process_data() -> dict:
         "human_role": None,
         "html_report": "",
     }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
 
-def _get_active_data() -> dict | None:
-    title = st.session_state.get("active_process")
-    if title and title in st.session_state["processes"]:
-        return st.session_state["processes"][title]
-    return None
-
-
-def _render_mermaid(mermaid_code: str, height: int = 500):
-    """Render a Mermaid diagram with white background for readability."""
+def _render_mermaid(mermaid_code: str, height: int = 400):
     html = f"""
-    <div style="background:#fff; padding:16px; border-radius:8px;">
-      <div class="mermaid" style="overflow-x:auto;">
-      {mermaid_code}
-      </div>
+    <div style="background:#fff; padding:12px; border-radius:8px;">
+      <div class="mermaid" style="overflow-x:auto;">{mermaid_code}</div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>mermaid.initialize({{startOnLoad:true, theme:'default'}});</script>
@@ -84,580 +68,476 @@ def _render_mermaid(mermaid_code: str, height: int = 500):
     st.components.v1.html(html, height=height, scrolling=True)
 
 
+def _video_placeholder():
+    """Render a circular video placeholder."""
+    st.markdown(
+        """
+        <div style="
+            width:120px; height:120px;
+            border-radius:50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0 auto 16px auto;
+            display:flex; align-items:center; justify-content:center;
+            color: white; font-size: 36px;
+            box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+        ">&#9654;</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _step_header(number: int, title: str, subtitle: str):
+    """Render step number badge + title + subtitle, centered."""
+    st.markdown(
+        f"""
+        <div style="text-align:center; margin-bottom:12px;">
+            <div style="
+                display:inline-block;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color:white; border-radius:50%;
+                width:32px; height:32px; line-height:32px;
+                font-weight:700; font-size:14px;
+                margin-bottom:8px;
+            ">{number}</div>
+            <h3 style="margin:0 0 4px 0;">{title}</h3>
+            <p style="color:#888; margin:0; font-size:0.9rem;">{subtitle}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # ---------------------------------------------------------------------------
-# Page config
+# Page config & custom CSS
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
     page_title="Process Automation Designer",
     page_icon="⚙️",
-    layout="wide",
+    layout="centered",
 )
-_init_session()
 
-# ---------------------------------------------------------------------------
-# Sidebar — process list
-# ---------------------------------------------------------------------------
-
-st.sidebar.title("Process Automation Designer")
-
-processes = st.session_state["processes"]
-active = st.session_state["active_process"]
-
-st.sidebar.subheader("Processes")
-
-if st.sidebar.button("+ New Process", use_container_width=True):
-    st.session_state["creating_new"] = True
-    st.session_state["active_process"] = None
-    st.rerun()
-
-# List existing processes
-for title in processes:
-    is_active = (title == active)
-    label = f"{'> ' if is_active else ''}{title}"
-    state = processes[title]["state"]
-    state_labels = {
-        SessionState.INPUT: "Input",
-        SessionState.TRANSCRIBED: "Transcribed",
-        SessionState.ASIS_GENERATED: "AS-IS",
-        SessionState.AUTOMATION_DIAGNOSED: "Automation",
-        SessionState.TOBE_GENERATED: "TO-BE",
-        SessionState.HTML_READY: "Done",
+st.markdown(
+    """
+    <style>
+    /* Mobile-friendly defaults */
+    .block-container { max-width: 640px; padding: 1rem 1rem 4rem 1rem; }
+    /* Compact expanders */
+    .streamlit-expanderHeader { font-size: 0.95rem; }
+    /* Step card */
+    .step-card {
+        background: var(--background-color);
+        border: 1px solid rgba(128,128,128,0.15);
+        border-radius: 12px;
+        padding: 24px 16px;
+        margin-bottom: 16px;
     }
-    badge = state_labels.get(state, state.value)
-    if st.sidebar.button(
-        f"{title}  [{badge}]",
-        key=f"proc_{title}",
-        use_container_width=True,
-        type="primary" if is_active else "secondary",
-    ):
-        st.session_state["active_process"] = title
-        st.session_state["creating_new"] = False
-        st.rerun()
+    /* Hide default header padding */
+    header[data-testid="stHeader"] { display: none; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-st.sidebar.divider()
+_init_session()
+state = st.session_state
 
 # ---------------------------------------------------------------------------
-# No active process — create new or welcome
+# Title
 # ---------------------------------------------------------------------------
 
-data = _get_active_data()
+st.markdown(
+    """
+    <div style="text-align:center; padding: 16px 0 24px 0;">
+        <h1 style="margin:0; font-size:1.6rem;">⚙️ Process Automation Designer</h1>
+        <p style="color:#888; margin:4px 0 0 0; font-size:0.9rem;">
+            Analyze your process step by step
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-if st.session_state.get("creating_new") and data is None:
-    st.header("Create New Process")
-    new_title = st.text_input(
-        "Process name",
-        placeholder="e.g. Invoice Approval Process",
-        key="new_proc_title",
+# ---------------------------------------------------------------------------
+# STEP 1 — Input
+# ---------------------------------------------------------------------------
+
+with st.container():
+    _video_placeholder()
+    _step_header(1, "Describe your process", "Upload audio or paste text of an interview")
+
+    input_mode = st.radio(
+        "How would you like to provide data?",
+        ["Text", "Audio file", "Record"],
+        horizontal=True,
+        label_visibility="collapsed",
     )
-    if st.button("Create", type="primary"):
-        name = new_title.strip()
-        if not name:
-            st.error("Enter a process name.")
-        elif name in processes:
-            st.error("Process with this name already exists.")
-        else:
-            proc_data = _new_process_data()
-            proc_data["process_title"] = name
-            st.session_state["processes"][name] = proc_data
-            st.session_state["active_process"] = name
-            st.session_state["creating_new"] = False
-            st.rerun()
 
-elif data is None:
-    st.header("Process Automation Designer")
-    st.info("Create a new process using the sidebar or select an existing one.")
+    if input_mode == "Text":
+        state["raw_text"] = st.text_area(
+            "Process description",
+            value=state["raw_text"],
+            height=180,
+            max_chars=config.MAX_TEXT_LENGTH,
+            placeholder="Describe the current process or paste an interview transcript...",
+            label_visibility="collapsed",
+        )
+
+    elif input_mode == "Audio file":
+        uploaded = st.file_uploader(
+            "Upload audio",
+            type=["mp3", "wav", "m4a", "ogg"],
+            help=f"Max {config.MAX_AUDIO_SIZE_MB} MB",
+            label_visibility="collapsed",
+        )
+        if uploaded:
+            state["_uploaded_audio"] = uploaded
+
+    else:  # Record
+        audio_bytes = st.audio_input("Record audio", label_visibility="collapsed")
+        if audio_bytes:
+            state["_recorded_audio"] = audio_bytes
+
+    lang = st.text_input(
+        "Language hint (optional)", placeholder="e.g. ru, en", label_visibility="collapsed",
+    ) if input_mode != "Text" else None
+
+    # --- Run button ---
+    can_run = (
+        (input_mode == "Text" and state["raw_text"].strip())
+        or (input_mode == "Audio file" and state.get("_uploaded_audio"))
+        or (input_mode == "Record" and state.get("_recorded_audio"))
+    )
+
+    if state["state"] == SessionState.INPUT:
+        if st.button(
+            "Analyze", type="primary", use_container_width=True, disabled=not can_run,
+        ):
+            if not config.LLM_API_KEY:
+                st.error("Set PA_LLM_API_KEY in .env")
+            else:
+                with st.status("Analyzing...", expanded=True) as status:
+                    try:
+                        # Transcribe if audio
+                        if input_mode == "Audio file":
+                            f = state["_uploaded_audio"]
+                            if f.size > config.MAX_AUDIO_SIZE_MB * 1024 * 1024:
+                                raise ValueError(f"File too large (max {config.MAX_AUDIO_SIZE_MB} MB)")
+                            suffix = Path(f.name).suffix
+                            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                                tmp.write(f.read())
+                                tmp_path = Path(tmp.name)
+                            st.write("Transcribing...")
+                            transcript = run_async(transcribe_audio(tmp_path, lang or None))
+                            tmp_path.unlink(missing_ok=True)
+                            state["transcript"] = transcript
+                            state["normalized_text"] = transcript
+                        elif input_mode == "Record":
+                            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                                tmp.write(state["_recorded_audio"].read())
+                                tmp_path = Path(tmp.name)
+                            st.write("Transcribing...")
+                            transcript = run_async(transcribe_audio(tmp_path, lang or None))
+                            tmp_path.unlink(missing_ok=True)
+                            state["transcript"] = transcript
+                            state["normalized_text"] = transcript
+                        else:
+                            state["normalized_text"] = state["raw_text"].strip()
+
+                        title = state.get("process_title") or "Process"
+
+                        st.write("Building AS-IS model...")
+                        asis = run_async(generate_asis(title, state["normalized_text"]))
+                        state["asis"] = asis
+                        state["state"] = SessionState.ASIS_GENERATED
+
+                        st.write("Finding automation opportunities...")
+                        points = run_async(diagnose_automation(title, asis))
+                        state["automation_points"] = points
+                        state["selected_point_ids"] = [p.id for p in points if p.default_selected]
+                        state["state"] = SessionState.AUTOMATION_DIAGNOSED
+
+                        status.update(label="Done!", state="complete")
+                    except Exception as e:
+                        status.update(label="Error", state="error")
+                        st.error(str(e))
+
+                if state["state"] == SessionState.AUTOMATION_DIAGNOSED:
+                    st.rerun()
+
+    # Result for step 1
+    if state.get("transcript"):
+        with st.expander("Transcript"):
+            st.text(state["transcript"][:2000])
+
+st.divider()
 
 # ---------------------------------------------------------------------------
-# Active process — show screens
+# STEP 2 — AS-IS Results
 # ---------------------------------------------------------------------------
 
-if data is not None:
-    current = data["state"]
-    title = data["process_title"]
+step2_done = state["state"].value in (
+    SessionState.ASIS_GENERATED.value,
+    SessionState.AUTOMATION_DIAGNOSED.value,
+    SessionState.TOBE_GENERATED.value,
+    SessionState.HTML_READY.value,
+)
 
-    # Sub-navigation for active process
-    screens = ["Input"]
-    if current.value in (
-        SessionState.ASIS_GENERATED.value,
-        SessionState.AUTOMATION_DIAGNOSED.value,
-        SessionState.TOBE_GENERATED.value,
-        SessionState.HTML_READY.value,
-    ):
-        screens.append("AS-IS")
-    if current.value in (
-        SessionState.AUTOMATION_DIAGNOSED.value,
-        SessionState.TOBE_GENERATED.value,
-        SessionState.HTML_READY.value,
-    ):
-        screens.append("Automation Points")
-    if current.value in (
-        SessionState.TOBE_GENERATED.value,
-        SessionState.HTML_READY.value,
-    ):
-        screens.append("TO-BE & New Role")
-    if current.value == SessionState.HTML_READY.value:
-        screens.append("HTML Report")
+with st.container():
+    _video_placeholder()
+    _step_header(2, "AS-IS Analysis", "How your process works today")
 
-    st.sidebar.caption(f"Current: {title}")
-    page = st.sidebar.radio("Navigation", screens, index=len(screens) - 1, key="page_nav")
+    if not step2_done:
+        st.info("Complete step 1 to see the analysis.")
+    else:
+        asis = state["asis"]
 
-    # -----------------------------------------------------------------------
-    # Screen: Input
-    # -----------------------------------------------------------------------
-    if page == "Input":
-        st.header(f"Input — {title}")
+        st.markdown(f"**Summary:** {asis.summary}")
 
-        input_mode = st.radio("Input type", ["Text", "Audio Upload", "Record Audio"], horizontal=True)
-
-        if input_mode == "Text":
-            data["raw_text"] = st.text_area(
-                "Paste interview transcript or process description",
-                value=data["raw_text"],
-                height=300,
-                max_chars=config.MAX_TEXT_LENGTH,
-                placeholder="Describe the current process or paste an interview transcript...",
-            )
-
-            if st.button("Analyze Process", type="primary", use_container_width=True):
-                text = data["raw_text"].strip()
-                if not text:
-                    st.error("Please enter process text.")
-                elif not config.LLM_API_KEY:
-                    st.error("LLM API key not configured. Set PA_LLM_API_KEY in .env")
-                else:
-                    data["normalized_text"] = text
-                    with st.status("Analyzing process...", expanded=True) as status:
-                        try:
-                            st.write("Generating AS-IS model...")
-                            asis = run_async(generate_asis(title, text))
-                            data["asis"] = asis
-                            data["state"] = SessionState.ASIS_GENERATED
-
-                            st.write("Identifying automation opportunities...")
-                            points = run_async(diagnose_automation(title, asis))
-                            data["automation_points"] = points
-                            data["selected_point_ids"] = [
-                                p.id for p in points if p.default_selected
-                            ]
-                            data["state"] = SessionState.AUTOMATION_DIAGNOSED
-                            status.update(label="Analysis complete!", state="complete")
-                        except Exception as e:
-                            status.update(label="Analysis failed", state="error")
-                            st.error(f"Error: {e}")
-
-                    if data["state"] == SessionState.AUTOMATION_DIAGNOSED:
-                        st.rerun()
-
-        elif input_mode == "Audio Upload":
-            uploaded = st.file_uploader(
-                "Upload audio file",
-                type=["mp3", "wav", "m4a", "ogg"],
-                help=f"Max {config.MAX_AUDIO_SIZE_MB} MB",
-            )
-            language_hint = st.text_input(
-                "Language hint (optional)",
-                placeholder="e.g. ru, en",
-            )
-
-            if uploaded and st.button("Analyze Process", type="primary", use_container_width=True):
-                if not config.LLM_API_KEY:
-                    st.error("LLM API key not configured. Set PA_LLM_API_KEY in .env")
-                elif uploaded.size > config.MAX_AUDIO_SIZE_MB * 1024 * 1024:
-                    st.error(f"File too large. Maximum: {config.MAX_AUDIO_SIZE_MB} MB")
-                else:
-                    suffix = Path(uploaded.name).suffix
-                    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                        tmp.write(uploaded.read())
-                        tmp_path = Path(tmp.name)
-
-                    with st.status("Processing audio...", expanded=True) as status:
-                        try:
-                            st.write("Transcribing audio...")
-                            transcript = run_async(
-                                transcribe_audio(tmp_path, language_hint or None)
-                            )
-                            data["transcript"] = transcript
-                            data["normalized_text"] = transcript
-                            data["state"] = SessionState.TRANSCRIBED
-
-                            st.write("Generating AS-IS model...")
-                            asis = run_async(generate_asis(title, transcript))
-                            data["asis"] = asis
-                            data["state"] = SessionState.ASIS_GENERATED
-
-                            st.write("Identifying automation opportunities...")
-                            points = run_async(diagnose_automation(title, asis))
-                            data["automation_points"] = points
-                            data["selected_point_ids"] = [
-                                p.id for p in points if p.default_selected
-                            ]
-                            data["state"] = SessionState.AUTOMATION_DIAGNOSED
-                            status.update(label="Analysis complete!", state="complete")
-                        except Exception as e:
-                            status.update(label="Processing failed", state="error")
-                            st.error(f"Error: {e}")
-                            if data["state"] == SessionState.INPUT:
-                                st.info("Try pasting text directly instead.")
-                        finally:
-                            tmp_path.unlink(missing_ok=True)
-
-                    if data["state"] == SessionState.AUTOMATION_DIAGNOSED:
-                        st.rerun()
-
-        else:  # Record Audio
-            st.info("Use the microphone button below to record audio directly in the browser.")
-            audio_bytes = st.audio_input("Record audio", key="audio_recorder")
-            language_hint = st.text_input(
-                "Language hint (optional)",
-                placeholder="e.g. ru, en",
-                key="rec_lang",
-            )
-
-            if audio_bytes and st.button("Analyze Recorded Audio", type="primary", use_container_width=True):
-                if not config.LLM_API_KEY:
-                    st.error("LLM API key not configured. Set PA_LLM_API_KEY in .env")
-                else:
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                        tmp.write(audio_bytes.read())
-                        tmp_path = Path(tmp.name)
-
-                    with st.status("Processing recorded audio...", expanded=True) as status:
-                        try:
-                            st.write("Transcribing audio...")
-                            transcript = run_async(
-                                transcribe_audio(tmp_path, language_hint or None)
-                            )
-                            data["transcript"] = transcript
-                            data["normalized_text"] = transcript
-                            data["state"] = SessionState.TRANSCRIBED
-
-                            st.write("Generating AS-IS model...")
-                            asis = run_async(generate_asis(title, transcript))
-                            data["asis"] = asis
-                            data["state"] = SessionState.ASIS_GENERATED
-
-                            st.write("Identifying automation opportunities...")
-                            points = run_async(diagnose_automation(title, asis))
-                            data["automation_points"] = points
-                            data["selected_point_ids"] = [
-                                p.id for p in points if p.default_selected
-                            ]
-                            data["state"] = SessionState.AUTOMATION_DIAGNOSED
-                            status.update(label="Analysis complete!", state="complete")
-                        except Exception as e:
-                            status.update(label="Processing failed", state="error")
-                            st.error(f"Error: {e}")
-                        finally:
-                            tmp_path.unlink(missing_ok=True)
-
-                    if data["state"] == SessionState.AUTOMATION_DIAGNOSED:
-                        st.rerun()
-
-        # Show transcript if available
-        if data.get("transcript"):
-            with st.expander("Transcript", expanded=False):
-                st.text_area(
-                    "Transcript text",
-                    value=data["transcript"],
-                    height=200,
-                    disabled=True,
-                    label_visibility="collapsed",
-                )
-
-    # -----------------------------------------------------------------------
-    # Screen: AS-IS
-    # -----------------------------------------------------------------------
-    elif page == "AS-IS":
-        st.header(f"AS-IS — {title}")
-        asis = data["asis"]
-        if not asis:
-            st.warning("No AS-IS data. Go back to Input.")
-        else:
-            st.subheader("Summary")
-            st.write(asis.summary)
-
+        with st.expander("Process diagram"):
             if asis.mermaid_code:
-                st.subheader("Process Diagram")
                 _render_mermaid(asis.mermaid_code)
-                with st.expander("Mermaid source"):
-                    st.code(asis.mermaid_code, language="mermaid")
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Roles")
-                for role in asis.roles:
-                    with st.expander(role.name):
-                        st.write(role.description)
-                        if role.responsibilities:
-                            st.write("**Responsibilities:**")
-                            for r in role.responsibilities:
-                                st.write(f"- {r}")
-
-            with col2:
-                st.subheader("Artifacts & Systems")
-                if asis.artifacts:
-                    st.write("**Artifacts:**")
-                    for a in asis.artifacts:
-                        st.write(f"- {a}")
-                if asis.systems:
-                    st.write("**Systems:**")
-                    for s in asis.systems:
-                        st.write(f"- {s}")
-
-            st.subheader("Process Steps")
+        with st.expander("Steps"):
             for i, step in enumerate(asis.steps, 1):
-                icon = "Decision" if step.is_decision else f"**{i}.**"
-                with st.expander(f"{icon} {step.name} ({step.actor})"):
-                    st.write(step.description)
-                    if step.systems:
-                        st.write(f"**Systems:** {', '.join(step.systems)}")
-                    if step.inputs:
-                        st.write(f"**Inputs:** {', '.join(step.inputs)}")
-                    if step.outputs:
-                        st.write(f"**Outputs:** {', '.join(step.outputs)}")
-                    if step.pain_points:
-                        st.write("**Pain points:**")
-                        for pp in step.pain_points:
-                            st.warning(pp)
+                tag = "Decision" if step.is_decision else f"{i}."
+                st.markdown(f"**{tag} {step.name}** — _{step.actor}_")
+                st.caption(step.description)
+                if step.pain_points:
+                    for pp in step.pain_points:
+                        st.warning(pp)
 
-            if asis.issues:
-                st.subheader("Issues & Bottlenecks")
+        with st.expander("Roles & Systems"):
+            for role in asis.roles:
+                st.markdown(f"**{role.name}** — {role.description}")
+            if asis.systems:
+                st.markdown("**Systems:** " + ", ".join(asis.systems))
+            if asis.artifacts:
+                st.markdown("**Artifacts:** " + ", ".join(asis.artifacts))
+
+        if asis.issues:
+            with st.expander("Issues"):
                 for issue in asis.issues:
                     st.error(issue)
 
-    # -----------------------------------------------------------------------
-    # Screen: Automation Points
-    # -----------------------------------------------------------------------
-    elif page == "Automation Points":
-        st.header(f"Automation Opportunities — {title}")
+st.divider()
 
-        points: list[AutomationPoint] = data["automation_points"]
-        if not points:
-            st.warning("No automation points diagnosed.")
-        else:
-            st.write("Select the automation points to include in the TO-BE design:")
+# ---------------------------------------------------------------------------
+# STEP 3 — Automation Points
+# ---------------------------------------------------------------------------
 
-            selected_ids = set(data["selected_point_ids"])
+step3_done = state["state"].value in (
+    SessionState.AUTOMATION_DIAGNOSED.value,
+    SessionState.TOBE_GENERATED.value,
+    SessionState.HTML_READY.value,
+)
 
-            for point in points:
-                maturity_colors = {
-                    "quick_win": "green",
-                    "short_term": "orange",
-                    "strategic": "violet",
-                }
-                type_labels = {
-                    "deterministic": "Deterministic (RPA/rules)",
-                    "intelligent": "Intelligent (AI/ML)",
-                    "hybrid": "Hybrid",
-                }
+with st.container():
+    _video_placeholder()
+    _step_header(3, "Automation Opportunities", "Choose what to automate")
 
-                col_check, col_info = st.columns([0.05, 0.95])
-                with col_check:
-                    checked = st.checkbox(
-                        point.id,
-                        value=point.id in selected_ids,
-                        key=f"ap_{point.id}",
-                        label_visibility="collapsed",
-                    )
-                    if checked and point.id not in selected_ids:
-                        selected_ids.add(point.id)
-                    elif not checked and point.id in selected_ids:
-                        selected_ids.discard(point.id)
+    if not step3_done:
+        st.info("Complete previous steps first.")
+    else:
+        points: list[AutomationPoint] = state["automation_points"]
+        selected_ids = set(state["selected_point_ids"])
 
-                with col_info:
-                    maturity_color = maturity_colors.get(point.maturity.value, "gray")
-                    st.markdown(f"**{point.stage}** — {point.manual_action}")
-                    st.caption(
-                        f"Type: {type_labels.get(point.automation_type.value, point.automation_type.value)} | "
-                        f"Maturity: :{maturity_color}[{point.maturity.value.replace('_', ' ')}] | "
-                        f"Effect: {point.effect}"
-                    )
+        maturity_emoji = {"quick_win": "🟢", "short_term": "🟡", "strategic": "🟣"}
 
-                    # Expanded details per PRD
-                    with st.expander("Details"):
-                        st.write(f"**Automation Potential:** {point.potential}")
-                        if point.human_role_description:
-                            st.write(f"**Human Role:** {point.human_role_description}")
-                        if point.system_action:
-                            st.write(f"**System Action:** {point.system_action}")
-                        if point.human_action:
-                            st.write(f"**Human Action:** {point.human_action}")
-                        if point.interaction_description:
-                            st.write(f"**Interaction:** {point.interaction_description}")
+        for point in points:
+            emoji = maturity_emoji.get(point.maturity.value, "⚪")
+            checked = st.checkbox(
+                f"{emoji} {point.stage} — {point.manual_action}",
+                value=point.id in selected_ids,
+                key=f"ap_{point.id}",
+            )
+            if checked:
+                selected_ids.add(point.id)
+            else:
+                selected_ids.discard(point.id)
 
-                st.divider()
+            with st.expander("Details", expanded=False):
+                st.caption(
+                    f"Type: {point.automation_type.value} · "
+                    f"Maturity: {point.maturity.value.replace('_', ' ')} · "
+                    f"Effect: {point.effect}"
+                )
+                if point.potential:
+                    st.write(f"**Potential:** {point.potential}")
+                if point.system_action:
+                    st.write(f"**System:** {point.system_action}")
+                if point.human_action:
+                    st.write(f"**Human:** {point.human_action}")
 
-            data["selected_point_ids"] = list(selected_ids)
+        state["selected_point_ids"] = list(selected_ids)
 
-            st.write(f"**{len(selected_ids)}** of **{len(points)}** points selected.")
+        st.caption(f"{len(selected_ids)} of {len(points)} selected")
 
-            if st.button("Generate TO-BE", type="primary", use_container_width=True):
-                if not selected_ids:
-                    st.warning("Select at least one automation point.")
-                else:
-                    asis = data["asis"]
-                    sel_points = [p for p in points if p.id in selected_ids]
+        can_generate = (
+            len(selected_ids) > 0
+            and state["state"].value not in (
+                SessionState.TOBE_GENERATED.value,
+                SessionState.HTML_READY.value,
+            )
+        )
 
-                    with st.status("Generating TO-BE...", expanded=True) as status:
-                        try:
-                            st.write("Building TO-BE process model...")
-                            tobe = run_async(generate_tobe(title, asis, sel_points))
-                            data["tobe"] = tobe
-                            data["state"] = SessionState.TOBE_GENERATED
+        if st.button(
+            "Generate TO-BE",
+            type="primary",
+            use_container_width=True,
+            disabled=not can_generate,
+        ):
+            asis = state["asis"]
+            sel_points = [p for p in points if p.id in selected_ids]
+            title = state.get("process_title") or "Process"
 
-                            st.write("Designing new human role...")
-                            human_role = run_async(
-                                generate_human_role(title, asis, tobe, sel_points)
-                            )
-                            data["human_role"] = human_role
-                            status.update(label="TO-BE generated!", state="complete")
-                        except Exception as e:
-                            status.update(label="Generation failed", state="error")
-                            st.error(f"Error: {e}")
+            with st.status("Generating...", expanded=True) as status:
+                try:
+                    st.write("Building TO-BE process...")
+                    tobe = run_async(generate_tobe(title, asis, sel_points))
+                    state["tobe"] = tobe
+                    state["state"] = SessionState.TOBE_GENERATED
 
-                    if data["state"] == SessionState.TOBE_GENERATED:
-                        st.rerun()
+                    st.write("Designing human role...")
+                    human_role = run_async(generate_human_role(title, asis, tobe, sel_points))
+                    state["human_role"] = human_role
 
-    # -----------------------------------------------------------------------
-    # Screen: TO-BE & New Role
-    # -----------------------------------------------------------------------
-    elif page == "TO-BE & New Role":
-        st.header(f"TO-BE — {title}")
-        tobe = data["tobe"]
-        human_role = data["human_role"]
+                    status.update(label="Done!", state="complete")
+                except Exception as e:
+                    status.update(label="Error", state="error")
+                    st.error(str(e))
 
-        if not tobe:
-            st.warning("No TO-BE data. Generate it from Automation Points screen.")
-        else:
-            st.subheader("Summary")
-            st.write(tobe.summary)
+            if state["state"] == SessionState.TOBE_GENERATED:
+                st.rerun()
 
+st.divider()
+
+# ---------------------------------------------------------------------------
+# STEP 4 — TO-BE & Human Role
+# ---------------------------------------------------------------------------
+
+step4_done = state["state"].value in (
+    SessionState.TOBE_GENERATED.value,
+    SessionState.HTML_READY.value,
+)
+
+with st.container():
+    _video_placeholder()
+    _step_header(4, "TO-BE Process", "How the process will work after automation")
+
+    if not step4_done:
+        st.info("Complete previous steps first.")
+    else:
+        tobe = state["tobe"]
+
+        st.markdown(f"**Summary:** {tobe.summary}")
+
+        with st.expander("Process diagram"):
             if tobe.mermaid_code:
-                st.subheader("Process Diagram")
                 _render_mermaid(tobe.mermaid_code)
-                with st.expander("Mermaid source"):
-                    st.code(tobe.mermaid_code, language="mermaid")
 
-            st.subheader("Process Steps")
+        with st.expander("Steps"):
             for i, step in enumerate(tobe.steps, 1):
-                is_automated = step.actor.lower() in (
-                    "system", "ai", "rpa bot", "automation",
-                ) or "automat" in step.actor.lower()
-                icon = "Robot" if is_automated else "Person"
-                with st.expander(f"{icon} {step.name} ({step.actor})"):
-                    st.write(step.description)
-                    if step.systems:
-                        st.write(f"**Systems:** {', '.join(step.systems)}")
+                is_auto = any(
+                    w in step.actor.lower()
+                    for w in ("system", "ai", "rpa", "bot", "automat")
+                )
+                icon = "🤖" if is_auto else "👤"
+                st.markdown(f"**{icon} {step.name}** — _{step.actor}_")
+                st.caption(step.description)
 
-            if tobe.changes_rationale:
-                st.subheader("Changes Rationale")
+        if tobe.changes_rationale:
+            with st.expander("Changes rationale"):
                 for r in tobe.changes_rationale:
                     st.info(r)
 
-            if tobe.assumptions:
-                with st.expander("Assumptions"):
-                    for a in tobe.assumptions:
-                        st.write(f"- {a}")
-
-            # New Human Role
-            st.divider()
-            st.header("New Human Role")
-
-            if human_role:
-                level_descriptions = {
-                    HumanRoleLevel.H0_OPERATOR: "Operator — monitors automated processes, handles simple exceptions",
-                    HumanRoleLevel.H1_SUPERVISOR: "Supervisor — reviews AI outputs, manages escalations",
-                    HumanRoleLevel.H2_MANAGER: "Manager — makes strategic decisions, drives improvement",
-                    HumanRoleLevel.H3_EXPERT: "Expert — designs rules, trains AI, handles complex cases",
-                }
-
-                current_level = human_role.level
-                level_options = list(HumanRoleLevel)
-                level_index = level_options.index(current_level)
-
-                selected_level = st.selectbox(
-                    "Role level",
-                    options=level_options,
-                    index=level_index,
-                    format_func=lambda x: f"{x.value} — {level_descriptions[x].split(' — ')[1]}",
-                )
-
-                if selected_level != current_level:
-                    st.info(
-                        f"Role level changed to {selected_level.value}. "
-                        "Regenerate TO-BE to update the role description for this level."
-                    )
-                    human_role.level = selected_level
-
-                col_role, col_kpi = st.columns([1, 1])
-                with col_role:
-                    st.subheader(f"{human_role.level.value} — {human_role.role_name}")
-                    st.write(f"**Mission:** {human_role.mission}")
-
-                    st.write("**Responsibilities:**")
-                    for r in human_role.responsibilities:
-                        st.write(f"- {r}")
-
-                    if human_role.boundaries:
-                        st.write(f"**Boundaries:** {human_role.boundaries}")
-
-                with col_kpi:
-                    if human_role.kpis:
-                        st.subheader("KPIs")
-                        for kpi in human_role.kpis:
-                            st.metric(label=kpi, value="—")
-
-                    if human_role.tools:
-                        st.subheader("Tools & Systems")
-                        for t in human_role.tools:
-                            st.write(f"- {t}")
-
-                # Generate HTML report button
-                st.divider()
-                if st.button("Done — Generate Final Report", type="primary", use_container_width=True):
-                    try:
-                        asis = data["asis"]
-                        automation_points = data["automation_points"]
-                        selected_ids = data["selected_point_ids"]
-                        transcript = data.get("transcript") or data.get("normalized_text")
-
-                        html = build_html_report(
-                            title=title,
-                            transcript=transcript,
-                            asis=asis,
-                            automation_points=automation_points,
-                            selected_ids=selected_ids,
-                            tobe=tobe,
-                            human_role=human_role,
-                        )
-                        data["html_report"] = html
-                        data["state"] = SessionState.HTML_READY
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error generating report: {e}")
-
-    # -----------------------------------------------------------------------
-    # Screen: HTML Report
-    # -----------------------------------------------------------------------
-    elif page == "HTML Report":
-        st.header(f"Final Report — {title}")
-
-        html = data.get("html_report", "")
-        if not html:
-            st.warning("No report generated yet.")
-        else:
-            st.subheader("Preview")
-            st.components.v1.html(html, height=800, scrolling=True)
-
-            safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
-            filename = f"{safe_title}_report.html"
-
-            st.download_button(
-                label="Download HTML Report",
-                data=html,
-                file_name=filename,
-                mime="text/html",
-                type="primary",
-                use_container_width=True,
+        # Human role
+        human_role = state["human_role"]
+        if human_role:
+            st.markdown("---")
+            st.markdown(
+                f"<div style='text-align:center'><h4>New Human Role</h4></div>",
+                unsafe_allow_html=True,
             )
+
+            level_desc = {
+                HumanRoleLevel.H0_OPERATOR: "Operator — monitors, handles exceptions",
+                HumanRoleLevel.H1_SUPERVISOR: "Supervisor — reviews AI outputs",
+                HumanRoleLevel.H2_MANAGER: "Manager — strategic decisions",
+                HumanRoleLevel.H3_EXPERT: "Expert — designs rules, trains AI",
+            }
+
+            selected_level = st.selectbox(
+                "Role level",
+                options=list(HumanRoleLevel),
+                index=list(HumanRoleLevel).index(human_role.level),
+                format_func=lambda x: f"{x.value} — {level_desc[x].split(' — ')[1]}",
+            )
+            if selected_level != human_role.level:
+                human_role.level = selected_level
+
+            st.markdown(f"**{human_role.role_name}**")
+            st.markdown(f"_{human_role.mission}_")
+
+            with st.expander("Responsibilities"):
+                for r in human_role.responsibilities:
+                    st.markdown(f"- {r}")
+
+            if human_role.kpis:
+                with st.expander("KPIs"):
+                    for kpi in human_role.kpis:
+                        st.markdown(f"- {kpi}")
+
+            if human_role.tools:
+                with st.expander("Tools & Systems"):
+                    for t in human_role.tools:
+                        st.markdown(f"- {t}")
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# STEP 5 — Final Report
+# ---------------------------------------------------------------------------
+
+with st.container():
+    _video_placeholder()
+    _step_header(5, "Final Report", "Download the complete analysis")
+
+    if not step4_done:
+        st.info("Complete previous steps first.")
+    elif state["state"] != SessionState.HTML_READY:
+        if st.button("Generate Report", type="primary", use_container_width=True):
+            try:
+                title = state.get("process_title") or "Process"
+                transcript = state.get("transcript") or state.get("normalized_text")
+                html = build_html_report(
+                    title=title,
+                    transcript=transcript,
+                    asis=state["asis"],
+                    automation_points=state["automation_points"],
+                    selected_ids=state["selected_point_ids"],
+                    tobe=state["tobe"],
+                    human_role=state["human_role"],
+                )
+                state["html_report"] = html
+                state["state"] = SessionState.HTML_READY
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+    else:
+        html = state["html_report"]
+
+        with st.expander("Preview report"):
+            st.components.v1.html(html, height=600, scrolling=True)
+
+        title = state.get("process_title") or "Process"
+        safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
+
+        st.download_button(
+            label="Download HTML Report",
+            data=html,
+            file_name=f"{safe}_report.html",
+            mime="text/html",
+            type="primary",
+            use_container_width=True,
+        )
